@@ -1,0 +1,25 @@
+# Dados gerados (opcional: remova para versionar exemplos)
+# data/*.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+build/
+venv/
+.venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Streamlit
+.streamlit/
+
+# NLTK (se usar diretório customizado)
+nltk_data/

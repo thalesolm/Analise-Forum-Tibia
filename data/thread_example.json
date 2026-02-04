@@ -1,0 +1,25 @@
+{
+  "thread_id": "example",
+  "title": "Example thread",
+  "total_pages": 1,
+  "posts": [
+    {
+      "post_id": "1",
+      "author": "User1",
+      "date": "22.01.2026 11:00:00",
+      "body": "I think the monk needs more damage and better healing. The virtue of justice is great for party."
+    },
+    {
+      "post_id": "2",
+      "author": "User2",
+      "date": "22.01.2026 12:00:00",
+      "body": "Monk damage is too low. We need single target exeta and better chained penance."
+    },
+    {
+      "post_id": "3",
+      "author": "User3",
+      "date": "22.01.2026 13:00:00",
+      "body": "Healing and support are good. Ranged gameplay with thousand fist blows is a nice change."
+    }
+  ]
+}
