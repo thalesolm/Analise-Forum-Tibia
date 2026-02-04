@@ -103,7 +103,7 @@ def main():
         script_path = Path(__file__).resolve().parent / "browser_fetch_script.js"
         browser_script = script_path.read_text(encoding="utf-8") if script_path.exists() else "// Arquivo browser_fetch_script.js não encontrado."
         st.code(browser_script, language="javascript")
-        pasted_json = st.text_area("Cole aqui o JSON gerado pelo script", height=120, key="pasted_json", placeholder='{"thread_id": "4992269", "posts": [...]}')
+        pasted_json = st.text_area("Cole aqui o JSON gerado pelo script (sem limite de tamanho)", height=200, key="pasted_json", placeholder='{"thread_id": "4992269", "posts": [...]}')
         if st.button("Carregar e analisar", key="btn_load_pasted"):
             if not pasted_json.strip():
                 st.warning("Cole o JSON na caixa acima.")

@@ -74,7 +74,15 @@
       await navigator.clipboard.writeText(jsonStr);
       alert('JSON copiado! (' + allPosts.length + ' posts de ' + maxPage + ' página(s)). Cole no app e clique em "Carregar e analisar".');
     } catch (e) {
-      prompt('Copie o JSON abaixo (Ctrl+C):', jsonStr);
+      // prompt() trunca texto grande; usar textarea na página para copiar o JSON inteiro
+      const ta = document.createElement('textarea');
+      ta.value = jsonStr;
+      ta.setAttribute('readonly', '');
+      ta.style.cssText = 'position:fixed;top:20px;left:20px;right:20px;width:calc(100% - 40px);height:calc(100vh - 100px);z-index:99999;padding:12px;font-family:monospace;font-size:12px;background:#1e1e1e;color:#d4d4d4;border:2px solid #0e639c;box-sizing:border-box;';
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      alert('O JSON está na caixa que apareceu na tela (' + allPosts.length + ' posts). Use Ctrl+A (selecionar tudo) e Ctrl+C (copiar), depois cole no app. Feche a caixa depois (Delete ou clique fora e apague).');
     }
   })();
 })();
