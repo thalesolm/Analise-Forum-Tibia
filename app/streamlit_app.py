@@ -43,7 +43,7 @@ def scrape_and_analyze(url: str) -> dict | None:
         st.error(
             f"**O site do fórum retornou erro HTTP {code}.** "
             "Sites como o Tibia costumam bloquear requisições de datacenters (ex.: Streamlit Cloud). "
-            "**Sugestão:** abra a seção **Alternativa: enviar arquivo JSON** abaixo, baixe o tópico no seu PC com o scraper e envie o arquivo aqui."
+            "**Sugestão:** abra a seção **Gerar JSON no navegador** abaixo: abra o tópico no Tibia, rode o script no Console e cole o JSON aqui. Não precisa instalar nada no PC."
         )
         return None
     except requests.RequestException as e:
@@ -91,9 +91,46 @@ def main():
             st.success(f"Tópico analisado: {len(result.get('posts', []))} posts.")
             st.rerun()
 
-    # Alternativa: upload de JSON (quando o site bloqueia, ex.: no Streamlit Cloud)
-    with st.expander("Alternativa: enviar arquivo JSON (se o site bloquear)"):
-        st.caption("Se o Tibia bloquear o acesso (ex.: no Streamlit Cloud), baixe o tópico no seu PC e envie o JSON aqui.")
+    # Gerar JSON no navegador (sem rodar nada no PC)
+    with st.expander("Gerar JSON no navegador (use se o botão acima falhar)"):
+        st.markdown("""
+        1. **Abra o tópico do Tibia** no navegador (ex.: [este link](https://www.tibia.com/forum/?action=thread&threadid=4992269)).
+        2. Pressione **F12** e vá na aba **Console**.
+        3. **Copie todo o script** da caixa abaixo (clique no ícone de copiar) e **cole no Console**, depois pressione **Enter**.
+        4. Aguarde: o script vai baixar todas as páginas do tópico e **copiar o JSON** para a área de transferência.
+        5. **Volte aqui**, cole o JSON na caixa de texto e clique em **Carregar e analisar**.
+        """)
+        script_path = Path(__file__).resolve().parent / "browser_fetch_script.js"
+        browser_script = script_path.read_text(encoding="utf-8") if script_path.exists() else "// Arquivo browser_fetch_script.js não encontrado."
+        st.code(browser_script, language="javascript")
+        pasted_json = st.text_area("Cole aqui o JSON gerado pelo script", height=120, key="pasted_json", placeholder='{"thread_id": "4992269", "posts": [...]}')
+        if st.button("Carregar e analisar", key="btn_load_pasted"):
+            if not pasted_json.strip():
+                st.warning("Cole o JSON na caixa acima.")
+            else:
+                try:
+                    data = json.loads(pasted_json)
+                    if "word_cloud" in data and "posts" in data:
+                        st.session_state["analysis_result"] = data
+                        st.session_state["analysis_thread_id"] = data.get("thread_id")
+                        st.success(f"Análise carregada: {len(data.get('posts', []))} posts.")
+                        st.rerun()
+                    elif "posts" in data and "thread_id" in data:
+                        with st.spinner("Analisando textos…"):
+                            from analysis.run import run_analysis
+                            result = run_analysis(data)
+                        st.session_state["analysis_result"] = result
+                        st.session_state["analysis_thread_id"] = result.get("thread_id")
+                        st.success(f"Tópico analisado: {len(result.get('posts', []))} posts.")
+                        st.rerun()
+                    else:
+                        st.warning("JSON inválido: precisa ter 'posts' e 'thread_id' (thread) ou 'word_cloud' (análise).")
+                except json.JSONDecodeError as e:
+                    st.error(f"JSON inválido: {e}")
+
+    # Alternativa: upload de arquivo JSON
+    with st.expander("Ou envie um arquivo JSON"):
+        st.caption("Envie um arquivo thread_*.json ou analysis_*.json (se tiver salvo no PC).")
         uploaded = st.file_uploader("Enviar thread_*.json ou analysis_*.json", type="json", key="upload_json")
         if uploaded is not None:
             try:
@@ -133,7 +170,7 @@ def main():
     options = {k: v for k, v in options.items() if v is not None}
 
     if not options:
-        st.info("Cole a URL de um tópico acima e clique em **Baixar e analisar** para ver a nuvem de palavras e explorar os comentários.")
+        st.info("Use **Baixar e analisar** com a URL do tópico ou, se o site bloquear, abra **Gerar JSON no navegador** e siga os passos (sem instalar nada no PC).")
         st.stop()
 
     # Seletor de análise (se mais de uma, mostrar no sidebar)
