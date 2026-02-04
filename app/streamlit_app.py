@@ -329,9 +329,15 @@ def main():
                 prompt_cluster = f"Estes são comentários de um fórum de feedback do jogo Tibia. Os principais termos deste grupo são: {', '.join(terms[:12])}. Abaixo estão trechos dos comentários. O que eles têm em comum? Qual o sentimento ou pedido principal (buff, nerf, QoL)? Responde em 1–2 frases."
                 st.text_area("Prompt sugerido (copie e cole na IA)", value=prompt_cluster, height=70, disabled=True, key=f"prompt_cluster_{c}")
                 bodies = [p.get("body", "") for p in cluster_posts]
+                # Cluster inteiro para copiar de uma vez
+                full_text = "\n\n".join(f"--- Post {n} ---\n{b}" for n, b in enumerate(bodies, 1))
+                st.text_area("Cluster inteiro (copie de uma vez – Ctrl+A e Ctrl+C)", value=full_text, height=min(500, max(200, 100 + len(full_text) // 35)), disabled=True, key=f"full_cluster_{c}")
+                # Lotes menores (opcional)
                 batches = split_texts_into_batches(bodies, header_template="--- Post {n} ---\n")
-                for i, batch in enumerate(batches, 1):
-                    st.text_area(f"Lote {i} (Ctrl+A e Ctrl+C para copiar)", value=batch, height=160, disabled=True, key=f"batch_cluster_{c}_{i}")
+                if len(batches) > 1:
+                    st.caption("Se preferir copiar em partes menores, use os lotes abaixo.")
+                    for i, batch in enumerate(batches, 1):
+                        st.text_area(f"Lote {i} (Ctrl+A e Ctrl+C para copiar)", value=batch, height=160, disabled=True, key=f"batch_cluster_{c}_{i}")
 
 
 if __name__ == "__main__":
