@@ -2,6 +2,7 @@
 Interface Streamlit: colar URL do tópico, scraping + análise automáticos,
 nuvem de palavras e tabela de comentários ao selecionar uma palavra.
 """
+import base64
 import json
 import sys
 from pathlib import Path
@@ -331,7 +332,32 @@ def main():
                 bodies = [p.get("body", "") for p in cluster_posts]
                 # Cluster inteiro para copiar de uma vez
                 full_text = "\n\n".join(f"--- Post {n} ---\n{b}" for n, b in enumerate(bodies, 1))
-                st.text_area("Cluster inteiro (copie de uma vez – Ctrl+A e Ctrl+C)", value=full_text, height=min(500, max(200, 100 + len(full_text) // 35)), disabled=True, key=f"full_cluster_{c}")
+                st.text_area("Cluster inteiro", value=full_text, height=min(500, max(200, 100 + len(full_text) // 35)), disabled=True, key=f"full_cluster_{c}")
+                # Botão que copia o cluster para a área de transferência (via JS no navegador)
+                b64 = base64.b64encode(full_text.encode("utf-8")).decode("ascii")
+                copy_html = f"""
+                <html><body style="margin:0;">
+                <button id="copyBtn" style="padding:8px 16px;cursor:pointer;font-size:14px;border-radius:6px;border:1px solid #ccc;background:#f0f2f6;">📋 Copiar cluster para área de transferência</button>
+                <span id="msg" style="margin-left:8px;color:green;font-size:13px;"></span>
+                <script>
+                (function() {{
+                    var b64 = "{b64}";
+                    var binary = atob(b64);
+                    var bytes = new Uint8Array(binary.length);
+                    for (var i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+                    var text = new TextDecoder("utf-8").decode(bytes);
+                    document.getElementById("copyBtn").onclick = function() {{
+                        navigator.clipboard.writeText(text).then(function() {{
+                            var el = document.getElementById("msg");
+                            el.textContent = "Copiado!";
+                            setTimeout(function() {{ el.textContent = ""; }}, 2000);
+                        }}).catch(function() {{ document.getElementById("msg").textContent = "Erro ao copiar."; }});
+                    }};
+                }})();
+                </script>
+                </body></html>
+                """
+                st.components.v1.html(copy_html, height=50)
                 # Lotes menores (opcional)
                 batches = split_texts_into_batches(bodies, header_template="--- Post {n} ---\n")
                 if len(batches) > 1:
