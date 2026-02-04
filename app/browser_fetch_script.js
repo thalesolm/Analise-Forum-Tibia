@@ -1,5 +1,5 @@
 // Cole este script no Console (F12 → Console) na página do tópico do Tibia.
-// Usa a estrutura exata do HTML do fórum: div[id^="Post_"], .PostCharacterText, .PostDetails, .PostText.
+// Itera sobre TODOS os .PostText e para cada um pega o container do post (td.CipPost) para autor e data.
 (function() {
   const params = new URLSearchParams(window.location.search);
   const threadId = params.get('threadid');
@@ -11,20 +11,23 @@
 
   function parsePage(doc) {
     const posts = [];
-    // Cada post está em um div com id="Post_39563969" (estrutura oficial do Tibia)
-    const postDivs = doc.querySelectorAll('div[id^="Post_"]');
-    for (const div of postDivs) {
-      const idMatch = div.id.match(/^Post_(\d+)$/);
-      const post_id = idMatch ? idMatch[1] : null;
-      const authorEl = div.querySelector('.PostCharacterText a[href*="subtopic=characters"][href*="name="]');
+    // Estratégia: pegar TODOS os elementos com classe PostText (um por post)
+    const postTextElements = doc.querySelectorAll('.PostText');
+    for (const bodyEl of postTextElements) {
+      // Cada .PostText está dentro de um post; subir até o container (td.CipPost ou div[id^="Post_"])
+      const container = bodyEl.closest('td.CipPost') || bodyEl.closest('div[id^="Post_"]');
+      if (!container) continue;
+      const authorEl = container.querySelector('.PostCharacterText a[href*="subtopic=characters"][href*="name="]');
       const author = authorEl ? authorEl.textContent.trim() : '';
-      const detailsEl = div.querySelector('.PostDetails');
+      const detailsEl = container.querySelector('.PostDetails');
       const detailsText = detailsEl ? detailsEl.innerText : '';
       const dateMatch = detailsText.match(dateRe);
       const dateStr = dateMatch ? dateMatch[0] : '';
-      const bodyEl = div.querySelector('.PostText');
-      let body = bodyEl ? bodyEl.innerText : '';
+      let body = bodyEl.innerText ? bodyEl.innerText : bodyEl.textContent || '';
       body = body.replace(/\s+/g, ' ').replace(/Edited by [^\n]+ on \d{2}\.\d{2}\.\d{4}[^\n]*/gi, '').trim();
+      let post_id = null;
+      if (container.id && String(container.id).indexOf('Post_') === 0) post_id = String(container.id).replace(/^Post_/, '');
+      else { const p = container.querySelector('div[id^="Post_"]'); if (p && p.id) post_id = String(p.id).replace(/^Post_/, ''); }
       if (author && dateStr) {
         posts.push({ post_id, author, date: dateStr, body });
       }
@@ -36,7 +39,7 @@
     const links = doc.querySelectorAll('a[href*="pagenumber="]');
     let max = 1;
     links.forEach(a => {
-      const href = a.getAttribute('href') || a.href || '';
+      const href = (a.getAttribute && a.getAttribute('href')) || a.href || '';
       const m = href.match(/pagenumber=(\d+)/);
       if (m) max = Math.max(max, parseInt(m[1], 10));
     });
