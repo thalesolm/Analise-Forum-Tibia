@@ -196,14 +196,43 @@ def main():
     cluster_labels = data.get("cluster_labels", [])
     top_terms_per_cluster = data.get("top_terms_per_cluster", [])
 
-    st.sidebar.metric("Total de posts", len(posts))
-    st.sidebar.metric("Palavras na nuvem", len(word_cloud))
+    # Session state: filtro de palavras e palavra selecionada
+    if "words_to_hide" not in st.session_state:
+        st.session_state["words_to_hide"] = set()
+    if "selected_word" not in st.session_state:
+        st.session_state["selected_word"] = None
 
-    # Nuvem de palavras (imagem)
+    # ---- Filtro de palavras (sidebar) ----
+    st.sidebar.subheader("Filtro de palavras")
+    hide_input = st.sidebar.text_area(
+        "Palavras a ocultar (vírgula ou uma por linha)",
+        value="",
+        height=80,
+        key="words_to_hide_input",
+        placeholder="game, thing, lol",
+    )
+    if st.sidebar.button("Aplicar filtro", key="apply_filter"):
+        parts = [p.strip().lower() for p in hide_input.replace(",", "\n").split() if p.strip()]
+        st.session_state["words_to_hide"] = set(parts)
+        st.rerun()
+    if st.sidebar.button("Limpar filtro", key="clear_filter"):
+        st.session_state["words_to_hide"] = set()
+        st.rerun()
+
+    words_to_hide = st.session_state["words_to_hide"]
+    filtered_cloud = [(w, s) for w, s in word_cloud if w.lower() not in words_to_hide] if word_cloud else []
+    n_hidden = len(word_cloud) - len(filtered_cloud) if word_cloud else 0
+    if n_hidden > 0:
+        st.sidebar.caption(f"{n_hidden} palavra(s) oculta(s)")
+
+    st.sidebar.metric("Total de posts", len(posts))
+    st.sidebar.metric("Palavras na nuvem", len(filtered_cloud))
+
+    # Nuvem de palavras (imagem) com dados filtrados
     st.subheader("Nuvem de palavras (relevância por TF-IDF)")
-    if word_cloud:
+    if filtered_cloud:
         try:
-            freq = {w: max(1.0, s) for w, s in word_cloud}
+            freq = {w: max(1.0, s) for w, s in filtered_cloud}
             wc = WordCloud(
                 width=800,
                 height=400,
@@ -216,16 +245,36 @@ def main():
         except Exception as e:
             st.warning(f"Nuvem não gerada: {e}")
     else:
-        st.info("Sem dados para nuvem.")
+        st.info("Sem dados para nuvem (ou todas as palavras estão ocultas).")
 
-    # Seleção de palavra (simula "clique" na palavra)
-    st.subheader("Ver comentários por palavra")
-    words_for_select = [w for w, _ in word_cloud] if word_cloud else list(word_to_posts.keys())[:200]
-    selected_word = st.selectbox(
-        "Selecione uma palavra para ver os comentários que a contêm:",
-        options=[""] + sorted(words_for_select),
-        index=0,
-    )
+    # Nuvem clicável: botões por palavra (dados filtrados)
+    st.caption("Clique em uma palavra para ver os comentários:")
+    TOP_BUTTONS = 70
+    words_for_buttons = [w for w, _ in filtered_cloud[:TOP_BUTTONS]]
+    n_cols = 10
+    if words_for_buttons:
+        def set_selected_word(w: str):
+            st.session_state["selected_word"] = w
+        for start in range(0, len(words_for_buttons), n_cols):
+            cols = st.columns(n_cols)
+            for j, col in enumerate(cols):
+                idx = start + j
+                if idx < len(words_for_buttons):
+                    word = words_for_buttons[idx]
+                    with col:
+                        st.button(word, key=f"word_btn_{word}_{idx}", on_click=set_selected_word, args=(word,))
+        if st.button("Limpar seleção", key="clear_word"):
+            st.session_state["selected_word"] = None
+            st.rerun()
+
+    # Seleção por selectbox (alternativa)
+    options_sel = [""] + sorted(words_for_buttons) if words_for_buttons else [""]
+    cur = st.session_state.get("selected_word") or ""
+    idx_sel = options_sel.index(cur) if cur in options_sel else 0
+    chosen = st.selectbox("Ou selecione uma palavra:", options_sel, index=idx_sel, key="select_word")
+    if chosen:
+        st.session_state["selected_word"] = chosen
+    selected_word = st.session_state.get("selected_word")
 
     if selected_word:
         entries = word_to_posts.get(selected_word.lower(), [])
@@ -234,26 +283,55 @@ def main():
         else:
             st.caption(f"{len(entries)} comentário(s) contendo \"{selected_word}\".")
             df = pd.DataFrame([
-                {
-                    "Autor": e["author"],
-                    "Data": e["date"],
-                    "Conteúdo": e["body"],
-                }
+                {"Autor": e["author"], "Data": e["date"], "Conteúdo": e["body"]}
                 for e in entries
             ])
             st.dataframe(df, use_container_width=True, height=400)
-            # Expansível com conteúdo completo
             with st.expander("Ver comentários em texto"):
                 for e in entries:
                     st.markdown(f"**{e['author']}** ({e['date']})")
                     st.text(e["body"])
                     st.divider()
 
-    # Opcional: temas (clusters)
+            # Interpretar com IA (manual): prompt + lotes
+            st.subheader("Interpretar com IA (manual)")
+            st.caption("Cole o prompt abaixo no ChatGPT/DeepSeek, depois cole os comentários de um lote. Repita com outros lotes se precisar.")
+            prompt_text = f'Estes são comentários de um fórum sobre o jogo Tibia que mencionam a palavra "{selected_word}". O que esses comentários têm em comum? Qual o sentimento ou pedido principal (ex.: buff, nerf, qualidade de vida)? Responde em 1–2 frases.'
+            st.text_area("Prompt sugerido (copie e cole na IA)", value=prompt_text, height=80, disabled=True, key="prompt_word")
+            bodies = [e["body"] for e in entries]
+            from analysis.utils import split_texts_into_batches
+            batches = split_texts_into_batches(bodies)
+            for i, batch in enumerate(batches, 1):
+                st.text_area(f"Lote {i} (Ctrl+A e Ctrl+C para copiar)", value=batch, height=180, disabled=True, key=f"batch_word_{i}")
+
+    # Gráfico de frequência (dados filtrados)
+    st.subheader("Frequência das palavras")
+    if filtered_cloud:
+        TOP_CHART = 40
+        chart_data = filtered_cloud[:TOP_CHART]
+        df_chart = pd.DataFrame({"palavra": [w for w, _ in chart_data], "relevância": [s for w, s in chart_data]})
+        df_chart = df_chart.sort_values("relevância", ascending=True)
+        st.bar_chart(df_chart.set_index("palavra"))
+
+    # Temas (clusters) com cópia para IA
     if top_terms_per_cluster:
         st.sidebar.subheader("Temas (clusters)")
         for i, terms in enumerate(top_terms_per_cluster[:10]):
             st.sidebar.caption(f"Tema {i+1}: {', '.join(terms[:8])}")
+
+    st.subheader("Temas (clusters) – copiar para IA")
+    if top_terms_per_cluster and cluster_labels and len(cluster_labels) == len(posts):
+        from analysis.utils import split_texts_into_batches
+        for c in range(len(top_terms_per_cluster)):
+            terms = top_terms_per_cluster[c]
+            cluster_posts = [posts[i] for i in range(len(posts)) if cluster_labels[i] == c]
+            with st.expander(f"Tema {c+1}: {', '.join(terms[:6])}... ({len(cluster_posts)} posts)"):
+                prompt_cluster = f"Estes são comentários de um fórum de feedback do jogo Tibia. Os principais termos deste grupo são: {', '.join(terms[:12])}. Abaixo estão trechos dos comentários. O que eles têm em comum? Qual o sentimento ou pedido principal (buff, nerf, QoL)? Responde em 1–2 frases."
+                st.text_area("Prompt sugerido (copie e cole na IA)", value=prompt_cluster, height=70, disabled=True, key=f"prompt_cluster_{c}")
+                bodies = [p.get("body", "") for p in cluster_posts]
+                batches = split_texts_into_batches(bodies, header_template="--- Post {n} ---\n")
+                for i, batch in enumerate(batches, 1):
+                    st.text_area(f"Lote {i} (Ctrl+A e Ctrl+C para copiar)", value=batch, height=160, disabled=True, key=f"batch_cluster_{c}_{i}")
 
 
 if __name__ == "__main__":
