@@ -1,14 +1,21 @@
 """
-Interface Streamlit: nuvem de palavras e tabela de comentários ao selecionar uma palavra.
+Interface Streamlit: colar URL do tópico, scraping + análise automáticos,
+nuvem de palavras e tabela de comentários ao selecionar uma palavra.
 """
 import json
+import sys
 from pathlib import Path
+
+# Garantir imports do projeto (raiz = parent de app/)
+ROOT = Path(__file__).resolve().parent.parent
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import streamlit as st
 import pandas as pd
 from wordcloud import WordCloud
 
-DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+DATA_DIR = ROOT / "data"
 
 
 def load_analysis(path: Path) -> dict | None:
@@ -19,33 +26,88 @@ def load_analysis(path: Path) -> dict | None:
         return json.load(f)
 
 
+def scrape_and_analyze(url: str) -> dict | None:
+    """Executa scraping do tópico e análise NLP. Retorna dict de análise ou None em caso de erro."""
+    try:
+        from scraper.pagination import scrape_thread
+        from analysis.run import run_analysis
+    except ImportError as e:
+        st.error(f"Erro ao importar módulos: {e}. Execute a partir da raiz do projeto.")
+        return None
+    # Scraping (com delay menor no Streamlit para não estourar timeout)
+    with st.spinner("Baixando páginas do fórum…"):
+        thread_data = scrape_thread(url, delay=1.2, max_pages=None)
+    if not thread_data.get("posts"):
+        st.warning("Nenhum post encontrado. Verifique a URL ou se o fórum está acessível.")
+        return None
+    with st.spinner("Analisando textos (TF-IDF e clusters)…"):
+        result = run_analysis(thread_data)
+    return result
+
+
 def main():
     st.set_page_config(page_title="Análise Fórum Tibia", layout="wide")
     st.title("Análise de feedback do fórum Tibia")
 
-    # Listar análises disponíveis em data/
+    # Inicializar session_state para análise em memória
+    if "analysis_result" not in st.session_state:
+        st.session_state["analysis_result"] = None
+    if "analysis_thread_id" not in st.session_state:
+        st.session_state["analysis_thread_id"] = None
+
+    # ---- Entrada por URL (sempre visível no topo) ----
+    st.subheader("Analisar um tópico")
+    url = st.text_input(
+        "URL do tópico do fórum",
+        placeholder="https://www.tibia.com/forum/?action=thread&threadid=4992269",
+        key="forum_url",
+    )
+    st.caption("Pode levar alguns minutos se o tópico tiver muitas páginas.")
+    col1, _ = st.columns([1, 3])
+    with col1:
+        analyze_clicked = st.button("Baixar e analisar", type="primary")
+
+    if analyze_clicked and url.strip():
+        result = scrape_and_analyze(url.strip())
+        if result:
+            st.session_state["analysis_result"] = result
+            st.session_state["analysis_thread_id"] = result.get("thread_id")
+            st.success(f"Tópico analisado: {len(result.get('posts', []))} posts.")
+            st.rerun()
+
+    # Fonte dos dados: análise em memória ou arquivos em data/
+    data = st.session_state["analysis_result"]
     data_dir = DATA_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
     analysis_files = list(data_dir.glob("analysis_*.json"))
-    if not analysis_files:
-        st.warning(
-            "Nenhum arquivo de análise encontrado. Execute primeiro:\n"
-            "1. `python -m scraper.run \"https://www.tibia.com/forum/?action=thread&threadid=4992269\"`\n"
-            "2. `python -m analysis.run data/thread_4992269.json`"
-        )
+    options = {}
+    if data:
+        options["_current"] = data  # análise feita pela URL
+    for f in sorted(analysis_files, key=lambda p: p.name):
+        tid = f.stem.replace("analysis_", "")
+        options[tid] = load_analysis(f)
+    # Remover entradas None (arquivo não carregado)
+    options = {k: v for k, v in options.items() if v is not None}
+
+    if not options:
+        st.info("Cole a URL de um tópico acima e clique em **Baixar e analisar** para ver a nuvem de palavras e explorar os comentários.")
         st.stop()
 
-    # Seletor de análise
-    options = {f.stem.replace("analysis_", ""): f for f in sorted(analysis_files, key=lambda p: p.name)}
-    selected_id = st.sidebar.selectbox(
-        "Tópico (thread)",
-        options=list(options.keys()),
-        format_func=lambda x: f"Thread {x}",
-    )
-    analysis_path = options[selected_id]
-    data = load_analysis(analysis_path)
+    # Seletor de análise (se mais de uma, mostrar no sidebar)
+    if len(options) == 1 and "_current" in options:
+        data = options["_current"]
+    else:
+        choice_labels = {"_current": "Último analisado (URL)"}
+        choice_labels.update({tid: f"Thread {tid}" for tid in options if tid != "_current"})
+        selected_id = st.sidebar.selectbox(
+            "Tópico (thread)",
+            options=list(options.keys()),
+            format_func=lambda x: choice_labels.get(x, f"Thread {x}"),
+        )
+        data = options[selected_id]
+
     if not data:
-        st.error(f"Erro ao carregar {analysis_path}")
+        st.error("Erro ao carregar os dados.")
         st.stop()
 
     posts = data.get("posts", [])
