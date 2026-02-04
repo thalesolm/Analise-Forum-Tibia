@@ -11,6 +11,7 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import requests
 import streamlit as st
 import pandas as pd
 from wordcloud import WordCloud
@@ -34,14 +35,29 @@ def scrape_and_analyze(url: str) -> dict | None:
     except ImportError as e:
         st.error(f"Erro ao importar módulos: {e}. Execute a partir da raiz do projeto.")
         return None
-    # Scraping (com delay menor no Streamlit para não estourar timeout)
-    with st.spinner("Baixando páginas do fórum…"):
-        thread_data = scrape_thread(url, delay=1.2, max_pages=None)
+    try:
+        with st.spinner("Baixando páginas do fórum…"):
+            thread_data = scrape_thread(url, delay=1.2, max_pages=None)
+    except requests.HTTPError as e:
+        code = e.response.status_code if e.response is not None else "?"
+        st.error(
+            f"**O site do fórum retornou erro HTTP {code}.** "
+            "Sites como o Tibia costumam bloquear requisições de datacenters (ex.: Streamlit Cloud). "
+            "**Sugestão:** abra a seção **Alternativa: enviar arquivo JSON** abaixo, baixe o tópico no seu PC com o scraper e envie o arquivo aqui."
+        )
+        return None
+    except requests.RequestException as e:
+        st.error(f"**Erro de rede:** {e}. Verifique a URL e se o site está acessível.")
+        return None
     if not thread_data.get("posts"):
         st.warning("Nenhum post encontrado. Verifique a URL ou se o fórum está acessível.")
         return None
-    with st.spinner("Analisando textos (TF-IDF e clusters)…"):
-        result = run_analysis(thread_data)
+    try:
+        with st.spinner("Analisando textos (TF-IDF e clusters)…"):
+            result = run_analysis(thread_data)
+    except Exception as e:
+        st.error(f"Erro durante a análise: {e}")
+        return None
     return result
 
 
@@ -74,6 +90,33 @@ def main():
             st.session_state["analysis_thread_id"] = result.get("thread_id")
             st.success(f"Tópico analisado: {len(result.get('posts', []))} posts.")
             st.rerun()
+
+    # Alternativa: upload de JSON (quando o site bloqueia, ex.: no Streamlit Cloud)
+    with st.expander("Alternativa: enviar arquivo JSON (se o site bloquear)"):
+        st.caption("Se o Tibia bloquear o acesso (ex.: no Streamlit Cloud), baixe o tópico no seu PC e envie o JSON aqui.")
+        uploaded = st.file_uploader("Enviar thread_*.json ou analysis_*.json", type="json", key="upload_json")
+        if uploaded is not None:
+            try:
+                data = json.load(uploaded)
+                if "word_cloud" in data and "posts" in data:
+                    # Já é análise pronta
+                    st.session_state["analysis_result"] = data
+                    st.session_state["analysis_thread_id"] = data.get("thread_id")
+                    st.success(f"Análise carregada: {len(data.get('posts', []))} posts.")
+                    st.rerun()
+                elif "posts" in data and "thread_id" in data:
+                    # É thread bruto: rodar análise
+                    with st.spinner("Analisando textos…"):
+                        from analysis.run import run_analysis
+                        result = run_analysis(data)
+                    st.session_state["analysis_result"] = result
+                    st.session_state["analysis_thread_id"] = result.get("thread_id")
+                    st.success(f"Tópico analisado: {len(result.get('posts', []))} posts.")
+                    st.rerun()
+                else:
+                    st.warning("JSON inválido: precisa ter 'posts' e 'thread_id' (thread) ou 'word_cloud' (análise).")
+            except json.JSONDecodeError as e:
+                st.error(f"Arquivo JSON inválido: {e}")
 
     # Fonte dos dados: análise em memória ou arquivos em data/
     data = st.session_state["analysis_result"]
