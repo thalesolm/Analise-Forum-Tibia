@@ -248,31 +248,15 @@ def main():
     else:
         st.info("Sem dados para nuvem (ou todas as palavras estão ocultas).")
 
-    # Nuvem clicável: botões por palavra (dados filtrados)
-    st.caption("Clique em uma palavra para ver os comentários:")
-    TOP_BUTTONS = 70
-    words_for_buttons = [w for w, _ in filtered_cloud[:TOP_BUTTONS]]
-    n_cols = 10
-    if words_for_buttons:
-        def set_selected_word(w: str):
-            st.session_state["selected_word"] = w
-        for start in range(0, len(words_for_buttons), n_cols):
-            cols = st.columns(n_cols)
-            for j, col in enumerate(cols):
-                idx = start + j
-                if idx < len(words_for_buttons):
-                    word = words_for_buttons[idx]
-                    with col:
-                        st.button(word, key=f"word_btn_{word}_{idx}", on_click=set_selected_word, args=(word,))
-        if st.button("Limpar seleção", key="clear_word"):
-            st.session_state["selected_word"] = None
-            st.rerun()
+    # Lista de palavras para o selectbox (dados filtrados)
+    TOP_SELECT = 70
+    words_for_buttons = [w for w, _ in filtered_cloud[:TOP_SELECT]]
 
-    # Seleção por selectbox (alternativa)
+    # Seleção por selectbox
     options_sel = [""] + sorted(words_for_buttons) if words_for_buttons else [""]
     cur = st.session_state.get("selected_word") or ""
     idx_sel = options_sel.index(cur) if cur in options_sel else 0
-    chosen = st.selectbox("Ou selecione uma palavra:", options_sel, index=idx_sel, key="select_word")
+    chosen = st.selectbox("Selecione uma palavra para ver os comentários:", options_sel, index=idx_sel, key="select_word")
     if chosen:
         st.session_state["selected_word"] = chosen
     selected_word = st.session_state.get("selected_word")
@@ -305,13 +289,13 @@ def main():
             for i, batch in enumerate(batches, 1):
                 st.text_area(f"Lote {i} (Ctrl+A e Ctrl+C para copiar)", value=batch, height=180, disabled=True, key=f"batch_word_{i}")
 
-    # Gráfico de frequência (dados filtrados)
+    # Gráfico de frequência (dados filtrados): maior → menor, esquerda → direita
     st.subheader("Frequência das palavras")
     if filtered_cloud:
         TOP_CHART = 40
         chart_data = filtered_cloud[:TOP_CHART]
         df_chart = pd.DataFrame({"palavra": [w for w, _ in chart_data], "relevância": [s for w, s in chart_data]})
-        df_chart = df_chart.sort_values("relevância", ascending=True)
+        df_chart = df_chart.sort_values("relevância", ascending=False)
         st.bar_chart(df_chart.set_index("palavra"))
 
     # Temas (clusters) com cópia para IA
