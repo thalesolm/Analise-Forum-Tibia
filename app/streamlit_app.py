@@ -162,12 +162,16 @@ def main():
     data_dir = DATA_DIR
     data_dir.mkdir(parents=True, exist_ok=True)
     analysis_files = list(data_dir.glob("analysis_*.json"))
+    reanalyzed_tid = st.session_state.get("reanalyzed_thread_id")
     options = {}
     if data:
         options["_current"] = data  # análise feita pela URL
     for f in sorted(analysis_files, key=lambda p: p.name):
         tid = f.stem.replace("analysis_", "")
-        options[tid] = load_analysis(f)
+        loaded = load_analysis(f)
+        if loaded and reanalyzed_tid is not None and loaded.get("thread_id") == reanalyzed_tid:
+            loaded = st.session_state.get("analysis_result") or loaded
+        options[tid] = loaded
     # Remover entradas None (arquivo não carregado)
     options = {k: v for k, v in options.items() if v is not None}
 
@@ -185,6 +189,7 @@ def main():
             "Tópico (thread)",
             options=list(options.keys()),
             format_func=lambda x: choice_labels.get(x, f"Thread {x}"),
+            key="selected_analysis_id",
         )
         data = options[selected_id]
 
@@ -310,6 +315,41 @@ def main():
             .configure_title(color="#fafafa")
         )
         st.altair_chart(chart, use_container_width=True)
+
+    # Temas (clusters): sugestões silhouette/elbow + número a usar + reanalisar
+    n_clusters_used = data.get("n_clusters_used") or (len(top_terms_per_cluster) if top_terms_per_cluster else 6)
+    suggested_silhouette = data.get("suggested_k_silhouette")
+    suggested_elbow = data.get("suggested_k_elbow")
+
+    st.subheader("Número de clusters")
+    if suggested_silhouette is not None:
+        st.caption(f"**Silhouette** sugere: **{suggested_silhouette}** clusters.")
+    if suggested_elbow is not None:
+        st.caption(f"**Elbow** sugere: **{suggested_elbow}** clusters.")
+    if suggested_silhouette is None and suggested_elbow is None and top_terms_per_cluster:
+        st.caption("Sugestões não disponíveis (análise antiga).")
+
+    n_clusters_input = st.number_input(
+        "Número de clusters a usar:",
+        min_value=2,
+        max_value=30,
+        value=n_clusters_used,
+        key="n_clusters_input",
+    )
+    if st.button("Reanalisar com N clusters", key="btn_reanalyze_clusters"):
+        thread_data = {
+            "posts": data["posts"],
+            "thread_id": data.get("thread_id"),
+            "title": data.get("title"),
+        }
+        with st.spinner("Reanalisando clusters…"):
+            from analysis.run import run_analysis
+            new_result = run_analysis(thread_data, n_clusters=n_clusters_input)
+        st.session_state["analysis_result"] = new_result
+        st.session_state["reanalyzed_thread_id"] = new_result.get("thread_id")
+        if "selected_analysis_id" in st.session_state:
+            st.session_state["selected_analysis_id"] = "_current"
+        st.rerun()
 
     # Temas (clusters) com cópia para IA
     if top_terms_per_cluster:

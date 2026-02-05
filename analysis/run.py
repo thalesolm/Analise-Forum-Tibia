@@ -13,10 +13,11 @@ from analysis.clustering import cluster_posts
 from analysis.word_to_posts import build_word_to_posts_index
 
 
-def run_analysis(thread_data: dict, n_clusters: int = N_CLUSTERS_DEFAULT) -> dict:
+def run_analysis(thread_data: dict, n_clusters: int | None = None) -> dict:
     """
-    Recebe o dict do thread (thread_id, posts, ...) e retorna o dict de análise
-    com word_scores, word_cloud, clusters, cluster_labels, word_to_posts.
+    Recebe o dict do thread (thread_id, posts, ...) e retorna o dict de análise.
+    Se n_clusters for None, usa o k sugerido pelo método silhouette.
+    Inclui suggested_k_silhouette, suggested_k_elbow e n_clusters_used.
     """
     posts = thread_data.get("posts", [])
     texts = [p.get("body") or "" for p in posts]
@@ -25,12 +26,15 @@ def run_analysis(thread_data: dict, n_clusters: int = N_CLUSTERS_DEFAULT) -> dic
     stopwords = get_stopwords()
     word_scores = tfidf_scores(texts)
     word_cloud = top_words_for_cloud(word_scores, max_words=MAX_WORDS_CLOUD)
-    labels, top_terms_per_cluster, _ = cluster_posts(texts, n_clusters=n_clusters)
+    labels, top_terms_per_cluster, _, suggestions = cluster_posts(texts, n_clusters=n_clusters)
     word_to_posts = build_word_to_posts_index(posts, stopwords=stopwords)
 
     # Serializar: word_to_posts com chaves string; word_cloud como lista de [word, score]
     word_cloud_serializable = [[w, float(s)] for w, s in word_cloud]
     word_scores_serializable = {k: float(v) for k, v in word_scores.items()}
+    # Scores por k: chaves int -> int no JSON
+    suggested_scores_silhouette = {int(k): v for k, v in suggestions["silhouette"]["scores"].items()}
+    suggested_scores_elbow = {int(k): v for k, v in suggestions["elbow"]["scores"].items()}
 
     return {
         "thread_id": thread_id,
@@ -42,6 +46,11 @@ def run_analysis(thread_data: dict, n_clusters: int = N_CLUSTERS_DEFAULT) -> dic
         "top_terms_per_cluster": top_terms_per_cluster,
         "word_to_posts": word_to_posts,
         "posts": posts,
+        "n_clusters_used": len(top_terms_per_cluster),
+        "suggested_k_silhouette": suggestions["silhouette"]["k"],
+        "suggested_k_elbow": suggestions["elbow"]["k"],
+        "suggested_scores_silhouette": suggested_scores_silhouette,
+        "suggested_scores_elbow": suggested_scores_elbow,
     }
 
 
@@ -49,7 +58,7 @@ def main():
     parser = argparse.ArgumentParser(description="Análise NLP de um tópico já baixado")
     parser.add_argument("input", help="Caminho do JSON do thread (ex: data/thread_4992269.json)")
     parser.add_argument("-o", "--output-dir", default="data", help="Diretório de saída")
-    parser.add_argument("--clusters", type=int, default=N_CLUSTERS_DEFAULT, help="Número de clusters")
+    parser.add_argument("--clusters", type=int, default=None, help="Número de clusters (omitir para sugestão automática)")
     args = parser.parse_args()
 
     path = Path(args.input)
@@ -59,7 +68,7 @@ def main():
     with open(path, encoding="utf-8") as f:
         thread_data = json.load(f)
 
-    result = run_analysis(thread_data, n_clusters=args.clusters)
+    result = run_analysis(thread_data, n_clusters=args.clusters)  # None = sugestão automática
     thread_id = result["thread_id"]
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
