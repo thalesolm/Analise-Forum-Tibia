@@ -64,8 +64,8 @@ def scrape_and_analyze(url: str) -> dict | None:
 
 
 def main():
-    st.set_page_config(page_title="Análise Fórum Tibia", layout="wide")
-    st.title("Análise de feedback do fórum Tibia")
+    st.set_page_config(page_title="Análise do Alytreta - Feedbacks do forum do tibia", layout="wide")
+    st.title("Análise do Alytreta – Feedbacks do fórum do Tibia")
 
     # Inicializar session_state para análise em memória
     if "analysis_result" not in st.session_state:
@@ -238,10 +238,11 @@ def main():
             wc = WordCloud(
                 width=800,
                 height=400,
-                background_color="white",
+                background_color="#0e1117",
                 max_words=150,
                 relative_scaling=1.0,
                 min_font_size=10,
+                colormap="viridis",
             ).generate_from_frequencies(freq)
             st.image(wc.to_image(), use_container_width=True)
         except Exception as e:
@@ -299,11 +300,14 @@ def main():
         df_chart = df_chart.sort_values("relevância", ascending=False)
         chart = (
             alt.Chart(df_chart)
-            .mark_bar()
+            .mark_bar(color="#6eb5e0")
             .encode(
                 x=alt.X("palavra", sort=alt.EncodingSortField("relevância", order="descending"), title="Palavra"),
                 y=alt.Y("relevância", title="Frequência"),
             )
+            .configure_view(background="#0e1117")
+            .configure_axis(labelColor="#fafafa", titleColor="#fafafa", domainColor="#444", gridColor="#333")
+            .configure_title(color="#fafafa")
         )
         st.altair_chart(chart, use_container_width=True)
 
@@ -330,8 +334,8 @@ def main():
                 b64 = base64.b64encode(full_text.encode("utf-8")).decode("ascii")
                 copy_html = f"""
                 <html><body style="margin:0;">
-                <button id="copyBtn" style="padding:8px 16px;cursor:pointer;font-size:14px;border-radius:6px;border:1px solid #ccc;background:#f0f2f6;">📋 Copiar cluster para área de transferência</button>
-                <span id="msg" style="margin-left:8px;color:green;font-size:13px;"></span>
+                <button id="copyBtn" style="padding:8px 16px;cursor:pointer;font-size:14px;border-radius:6px;border:1px solid #4a5568;background:#2d3748;color:#fafafa;">📋 Copiar cluster para área de transferência</button>
+                <span id="msg" style="margin-left:8px;color:#68d391;font-size:13px;"></span>
                 <script>
                 (function() {{
                     var b64 = "{b64}";
