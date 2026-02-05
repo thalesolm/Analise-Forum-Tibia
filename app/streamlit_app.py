@@ -305,7 +305,7 @@ def main():
                 x=alt.X("palavra", sort=alt.EncodingSortField("relevância", order="descending"), title="Palavra"),
                 y=alt.Y("relevância", title="Frequência"),
             )
-            .configure_view(background="#0e1117")
+            .configure_view(fill="#0e1117")
             .configure_axis(labelColor="#fafafa", titleColor="#fafafa", domainColor="#444", gridColor="#333")
             .configure_title(color="#fafafa")
         )
