@@ -15,6 +15,7 @@ if str(ROOT) not in sys.path:
 import requests
 import streamlit as st
 import pandas as pd
+import altair as alt
 from wordcloud import WordCloud
 
 DATA_DIR = ROOT / "data"
@@ -296,7 +297,15 @@ def main():
         chart_data = filtered_cloud[:TOP_CHART]
         df_chart = pd.DataFrame({"palavra": [w for w, _ in chart_data], "relevância": [s for w, s in chart_data]})
         df_chart = df_chart.sort_values("relevância", ascending=False)
-        st.bar_chart(df_chart.set_index("palavra"))
+        chart = (
+            alt.Chart(df_chart)
+            .mark_bar()
+            .encode(
+                x=alt.X("palavra", sort=alt.EncodingSortField("relevância", order="descending"), title="Palavra"),
+                y=alt.Y("relevância", title="Frequência"),
+            )
+        )
+        st.altair_chart(chart, use_container_width=True)
 
     # Temas (clusters) com cópia para IA
     if top_terms_per_cluster:
